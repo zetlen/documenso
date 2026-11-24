@@ -1,3 +1,4 @@
+import { type OidcPrompt, resolveOidcPrompt } from '@documenso/lib/constants/oidc';
 import { AppError, AppErrorCode } from '@documenso/lib/errors/app-error';
 import { CodeChallengeMethod, generateCodeVerifier, generateState, OAuth2Client } from 'arctic';
 import type { Context } from 'hono';
@@ -26,22 +27,16 @@ type HandleOAuthAuthorizeUrlOptions = {
   /**
    * Optional prompt to pass to the authorization endpoint.
    */
-  prompt?: 'none' | 'login' | 'consent' | 'select_account';
+  prompt?: OidcPrompt;
 
   /** Generated when omitted. */
   state?: string;
-};
-
-const isOidcPrompt = (value: unknown): value is HandleOAuthAuthorizeUrlOptions['prompt'] => {
-  return value === 'none' || value === 'login' || value === 'consent' || value === 'select_account';
 };
 
 const oauthCookieMaxAge = 60 * 10; // 10 minutes.
 
 export const handleOAuthAuthorizeUrl = async (options: HandleOAuthAuthorizeUrlOptions) => {
   const { c, clientOptions, redirectPath } = options;
-
-  let prompt = options.prompt ?? 'login';
 
   if (!clientOptions.clientId || !clientOptions.clientSecret) {
     throw new AppError(AppErrorCode.NOT_SETUP);
@@ -66,12 +61,11 @@ export const handleOAuthAuthorizeUrl = async (options: HandleOAuthAuthorizeUrlOp
     scopes,
   );
 
-  // Pass the prompt to the authorization endpoint.
-  if (process.env.NEXT_PRIVATE_OIDC_PROMPT && isOidcPrompt(process.env.NEXT_PRIVATE_OIDC_PROMPT)) {
-    prompt = process.env.NEXT_PRIVATE_OIDC_PROMPT;
-  }
+  const prompt = resolveOidcPrompt(process.env.NEXT_PRIVATE_OIDC_PROMPT, options.prompt ?? 'login');
 
-  url.searchParams.set('prompt', prompt);
+  if (prompt) {
+    url.searchParams.set('prompt', prompt);
+  }
 
   setCookie(c, `${clientOptions.id}_oauth_state`, state, {
     ...sessionCookieOptions,
